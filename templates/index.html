@@ -64,10 +64,6 @@ table{width:100%;border-collapse:collapse}td,th{padding:7px 6px;border-bottom:1p
       <span class="prim">&#10003; directives (standing LOTO &amp; plant policy)</span>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px">
-    <span class="mu">Output language:</span>
-    <select id="lang"><option>English</option><option>Hindi</option><option>Telugu</option></select>
-  </div>
 </header>
 
 <div class="stats" id="stats"></div>
@@ -240,7 +236,7 @@ async function sendCmms(btn){const machine=btn.dataset.machine||"",draft=btn.dat
 
 const thinking=t=>`<div class="box mu">⏳ ${t}</div>`;
 $("go").onclick=async()=>{const b=$("go");busy(b,true);$("out").innerHTML=thinking("Calling Hindsight reflect() over maintenance memory, mental models, and standing directives…");
- const d=await api("/api/check",{symptoms:$("sym").value,lang:$("lang").value});busy(b,false);
+ const d=await api("/api/check",{symptoms:$("sym").value});busy(b,false);
  $("out").innerHTML=d.error&&!d.agent?`<div class="err">${esc(d.error)}</div>`:renderCheck(d);
  if(d.machine&&!(d.error&&!d.agent))loadTwin(d.machine)};
 
@@ -253,7 +249,7 @@ const IMP_SCEN=[
 $("runimp").onclick=async()=>{const b=$("runimp");busy(b,true);
  const s=IMP_SCEN[Number($("impscen").value)||0];
  $("impout").innerHTML=thinking(`Step 1: Diagnosing ${s.machine_id} → Step 2: Retaining failed fix ("${s.fix}") to Hindsight → Step 3: Re-diagnosing…`);
- const d=await api("/api/improvement",{...s,worked:false,lang:$("lang").value});busy(b,false);
+ const d=await api("/api/improvement",{...s,worked:false});busy(b,false);
  if(d.error){$("impout").innerHTML=`<div class="err">${esc(d.error)}</div>`;return}
  const col=(t,a,isAfter)=>`<div class="box"><div class="row"><b>${t}</b><span class="chip ${isAfter?'critical':'novel'}">${isAfter?'After Hindsight retain()':'Baseline memory'}</span></div><p>${esc(a.verdict_summary||a.error)}</p>${a.dead_end_warning?`<div class="box danger"><b>&#9940; Dead-end warning:</b><br>${esc(a.dead_end_warning)}</div>`:'<div class="box mu">No dead-end warning recorded for this fix yet.</div>'}<b>Action checklist:</b>${li(a.action_checklist)}</div>`;
  $("impout").innerHTML=`<div class="box ok" style="border-color:var(--g)">&#10003; Retained live outcome <b>${esc(d.feedback?.id||"LIVE-001")}</b> for <b>${esc(s.machine_id)}</b>: <i>"${esc(s.fix)}"</i> &rarr; <b>FAILED (Do not repeat)</b></div><div class="two">${col("1. Before feedback",d.before,false)}${col("3. After failed fix retained in memory",d.after,true)}</div><p class="${d.changed?'ok':'bad'}">${d.changed?"✓ Proven: The agent's diagnosis and checklist changed immediately because Hindsight memory grew.":"The answers matched. Click Reset demo data and run again."}</p>`;loadOverview()};
@@ -267,7 +263,7 @@ $("runcmp").onclick=async()=>{const b=$("runcmp");busy(b,true);$("cmpout").inner
  $("cmpout").innerHTML=d.error?`<div class="err">${esc(d.error)}</div>`:`<div class="two"><div class="box"><div class="row"><b>Without Memory (Generic LLM)</b><span class="chip">0 plant records</span></div><p style="white-space:pre-wrap">${esc(d.without_memory)}</p><div class="mu">Generic textbook advice — unaware of prior failed fixes, specific tolerances, or repeat root causes on your floor.</div></div><div class="box" style="border-color:var(--ac)"><div class="row"><b>With Hindsight Memory</b><span class="chip nominal">${esc(d.confidence.label)} · ${esc(d.confidence.type)}</span></div><p style="white-space:pre-wrap">${esc(typeof d.with_memory==="string"?d.with_memory:JSON.stringify(d.with_memory,null,2))}</p>${cites?`<div style="margin-top:8px"><small class="mu">Grounded in Hindsight records: </small>${cites}</div>`:""}</div></div>`};
 
 $("ho").onclick=async()=>{const b=$("ho");busy(b,true);$("opsout").innerHTML=thinking("Synthesizing shift handoff brief from fleet risk, active sensor alerts, and recent live outcomes…");
- const d=await api("/api/handoff",{lang:$("lang").value});busy(b,false);
+ const d=await api("/api/handoff",{});busy(b,false);
  $("opsout").innerHTML=d.error?`<div class="err">${esc(d.error)}</div>`:`<div class="box"><b>&#128203; Shift Handoff Headline: ${esc(d.headline)}</b><div class="two" style="margin-top:8px"><div class="box warn" style="margin-top:0"><b>Machines on Watch List</b>${li(d.watch_list)}</div><div class="box" style="margin-top:0"><b>Priority Actions for Incoming Shift</b>${li(d.do_first)}</div></div></div>`};
 
 $("ev").onclick=async()=>{const b=$("ev");busy(b,true);$("opsout").innerHTML=thinking("Running 10-case retrieval & grounding benchmark against Hindsight bank…");
@@ -304,7 +300,7 @@ $("sc").innerHTML=SCEN.map((x,i)=>`<button class="${x[2]?'x':''}" data-i="${i}">
 $("sc").onclick=e=>{const i=e.target.dataset.i;if(i===undefined)return;const x=SCEN[i];$("sym").value=(x[0].startsWith("MCH")?x[0]+" ":"")+x[1];$("go").click()};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 $("mic").onclick=()=>{if(!SR){$("micmsg").textContent="Voice input needs Chrome or Edge.";return}
- $("micmsg").textContent="Listening…";const r=new SR();r.lang={Hindi:"hi-IN",Telugu:"te-IN"}[$("lang").value]||"en-IN";
+ $("micmsg").textContent="Listening…";const r=new SR();r.lang="en-US";
  r.onresult=e=>{$("sym").value+=" "+e.results[0][0].transcript;$("micmsg").textContent=""};
  r.onerror=()=>{$("micmsg").textContent="Didn't catch that — try again."};
  r.onend=()=>{if($("micmsg").textContent==="Listening…")$("micmsg").textContent=""};

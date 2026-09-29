@@ -137,7 +137,7 @@ python app.py
 ```
 Open `http://localhost:5000`. Features:
 - **Live Fleet & Sensor Watch** — Real-time sparkline telemetry across monitored machines with proactive precursor anomaly detection and 1-click alert diagnosis.
-- **Multilingual Voice & Text Support** — Diagnose and generate handoffs in **English**, **Hindi**, or **Telugu**, with browser speech recognition for hands-free floor use.
+- **Hands-Free Voice & Text Input** — Browser speech recognition for hands-free floor diagnostics.
 - **Tab 1: Diagnose & Digital Twin** — 20 realistic scenarios (including cross-fleet and novel/unknown machine edge cases), Hindsight `reflect()` triage, dead-end warnings, financial downtime risk (`$/hr` by asset class), standing Directives enforcement, citation provenance, self-updating Hindsight Mental Model Digital Twin, 1-click CMMS work-order drafting, and closed-loop technician outcome logging.
 - **Tab 2: Closed-Loop Improvement** — Automated 3-step live learning proof: diagnoses a machine, retains a failed repair (`LIVE-XXX`) into Hindsight, and re-runs the diagnosis to show the new dead-end warning and updated checklist side-by-side.
 - **Tab 3: With vs. Without Memory** — Side-by-side comparison between a generic LLM (0 plant records) and the Hindsight-grounded agent.

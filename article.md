@@ -10,7 +10,7 @@ To solve this, I built the **Machine Memory Agent** ([GitHub repository](https:/
 
 ## How the System Hangs Together
 
-When a floor technician describes a symptom (by typing or speaking in English, Hindi, or Telugu) or when a live telemetry stream crosses a precursor slope threshold, the request flows through a Flask gateway (`app.py`) into the core reasoning engine (`demo_agent.py`).
+When a floor technician describes a symptom (by typing or using hands-free voice input) or when a live telemetry stream crosses a precursor slope threshold, the request flows through a Flask gateway (`app.py`) into the core reasoning engine (`demo_agent.py`).
 
 ```
 Technician Input (Voice / Text) or Live Sensor Telemetry Anomaly
