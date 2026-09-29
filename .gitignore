@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+*.lnk
+live_incidents.json
+cmms_outbox.json

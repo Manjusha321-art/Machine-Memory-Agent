@@ -1,0 +1,225 @@
+[
+  {
+    "id": "MAINT-2025-001",
+    "machine_id": "MCH-017",
+    "machine_type": "Centrifugal Pump - Line 3",
+    "date": "2025-02-10",
+    "technician": "R. Bhatt",
+    "precursor_signals": [
+      "vibration amplitude climbing from 2.1mm/s to 9.8mm/s over 5 days",
+      "dominant frequency shift toward 1x rotational speed (bearing wear signature)",
+      "bearing housing temperature up from 58C to 74C",
+      "faint high-pitched whine reported by floor operators starting 2 days before failure"
+    ],
+    "failure": "Drive-end bearing seized, causing pump shaft misalignment and unplanned shutdown",
+    "downtime_hours": 14,
+    "severity": "high",
+    "repairs_attempted": [
+      "Initial regreasing of bearing housing - did not reduce vibration, symptom persisted"
+    ],
+    "final_fix": "Replaced drive-end bearing (SKF 6309), realigned shaft to 0.05mm tolerance, replaced worn coupling",
+    "root_cause": "Bearing lubrication interval had been extended from monthly to quarterly during a cost-cutting review 6 months prior, causing gradual grease starvation",
+    "tags": ["bearing", "vibration", "pump", "lubrication", "line-3"]
+  },
+  {
+    "id": "MAINT-2025-002",
+    "machine_id": "MCH-017",
+    "machine_type": "Centrifugal Pump - Line 3",
+    "date": "2025-08-22",
+    "technician": "S. Naik",
+    "precursor_signals": [
+      "vibration amplitude climbing from 2.3mm/s to 8.9mm/s over 4 days",
+      "dominant frequency shift toward 1x rotational speed",
+      "bearing housing temperature up from 60C to 71C",
+      "same high-pitched whine reported by operators"
+    ],
+    "failure": "Drive-end bearing failure again, same location as MAINT-2025-001",
+    "downtime_hours": 6,
+    "severity": "medium",
+    "repairs_attempted": [],
+    "final_fix": "Replaced bearing, restored monthly lubrication schedule permanently, added vibration sensor alert threshold at 6mm/s",
+    "root_cause": "Lubrication interval had quietly reverted to quarterly again after a maintenance software update reset the schedule template to its default",
+    "tags": ["bearing", "vibration", "pump", "lubrication", "line-3", "repeat-failure"]
+  },
+  {
+    "id": "MAINT-2025-003",
+    "machine_id": "MCH-042",
+    "machine_type": "Industrial Air Compressor - Unit B",
+    "date": "2025-03-05",
+    "technician": "P. Reddy",
+    "precursor_signals": [
+      "discharge air temperature climbing from 85C to 118C over 3 hours",
+      "compressor cycling frequency increasing (short-cycling)",
+      "oil pressure gauge reading dropping slightly but within nominal range"
+    ],
+    "failure": "Compressor thermal overload trip, unit shut down automatically to prevent damage",
+    "downtime_hours": 3,
+    "severity": "medium",
+    "repairs_attempted": [
+      "Reset thermal trip and restarted - failed again within 20 minutes"
+    ],
+    "final_fix": "Cleaned severely fouled intercooler fins, replaced clogged air intake filter",
+    "root_cause": "Intake filter had not been replaced on schedule due to a supply chain delay in filter stock, causing restricted airflow and heat buildup",
+    "tags": ["compressor", "temperature", "airflow", "filter", "thermal"]
+  },
+  {
+    "id": "MAINT-2025-004",
+    "machine_id": "MCH-042",
+    "machine_type": "Industrial Air Compressor - Unit B",
+    "date": "2025-09-30",
+    "technician": "P. Reddy",
+    "precursor_signals": [
+      "discharge air temperature climbing from 86C to 121C over 4 hours",
+      "compressor cycling frequency increasing",
+      "same pattern as MAINT-2025-003"
+    ],
+    "failure": "Thermal overload trip again on same unit",
+    "downtime_hours": 1,
+    "severity": "low",
+    "repairs_attempted": [],
+    "final_fix": "Replaced intake filter immediately based on flagged historical pattern, avoided full inspection cycle",
+    "root_cause": "Filter replacement schedule still relied on a fixed calendar interval rather than airflow-based triggering, so a filter nearing end-of-life again went unnoticed until temperature symptoms appeared",
+    "tags": ["compressor", "temperature", "airflow", "filter", "thermal", "repeat-failure"]
+  },
+  {
+    "id": "MAINT-2025-005",
+    "machine_id": "MCH-009",
+    "machine_type": "CNC Milling Machine - Bay 2",
+    "date": "2025-04-18",
+    "technician": "A. Kulkarni",
+    "precursor_signals": [
+      "spindle motor current draw increasing 15% above baseline under identical load",
+      "surface finish quality degrading on finished parts (visible chatter marks)",
+      "audible grinding noise during high-speed operation reported by operator"
+    ],
+    "failure": "Spindle bearing failure causing complete spindle seizure mid-cut, scrapping the workpiece",
+    "downtime_hours": 22,
+    "severity": "high",
+    "repairs_attempted": [
+      "Reduced spindle speed to compensate for noise - masked symptom temporarily, did not resolve underlying wear"
+    ],
+    "final_fix": "Replaced spindle bearing cartridge assembly, recalibrated spindle runout to spec",
+    "root_cause": "Coolant delivery nozzle had drifted out of alignment months earlier, causing insufficient cooling at the spindle bearing during extended high-speed runs",
+    "tags": ["spindle", "cnc", "bearing", "coolant", "chatter"]
+  },
+  {
+    "id": "MAINT-2025-006",
+    "machine_id": "MCH-009",
+    "machine_type": "CNC Milling Machine - Bay 2",
+    "date": "2025-11-02",
+    "technician": "D. Iyer",
+    "precursor_signals": [
+      "spindle motor current draw increasing above baseline",
+      "surface finish quality degrading with chatter marks reappearing",
+      "same signature as MAINT-2025-005"
+    ],
+    "failure": "Early signs caught before full seizure - spindle bearing showed wear consistent with prior failure pattern",
+    "downtime_hours": 4,
+    "severity": "low",
+    "repairs_attempted": [],
+    "final_fix": "Preemptively replaced spindle bearing during scheduled downtime, checked and corrected coolant nozzle alignment as part of the fix this time",
+    "root_cause": "Coolant nozzle alignment check had never been added to the standard maintenance checklist after the first incident, so the same misalignment recurred unnoticed over months",
+    "tags": ["spindle", "cnc", "bearing", "coolant", "chatter", "repeat-failure", "caught-early"]
+  },
+  {
+    "id": "MAINT-2025-007",
+    "machine_id": "MCH-028",
+    "machine_type": "Conveyor Belt Motor - Packaging Line",
+    "date": "2025-05-27",
+    "technician": "M. Chandran",
+    "precursor_signals": [
+      "motor casing temperature climbing from 65C to 95C over 6 hours",
+      "belt tracking drifting slightly off-center",
+      "intermittent motor stall alarms beginning 30 minutes before full failure"
+    ],
+    "failure": "Motor winding insulation breakdown from sustained overheating, motor failed completely",
+    "downtime_hours": 9,
+    "severity": "medium",
+    "repairs_attempted": [
+      "Manually recentered belt tracking - temporarily reduced stall alarms but temperature continued climbing"
+    ],
+    "final_fix": "Replaced motor, corrected belt tension which was root cause of tracking drift and motor strain",
+    "root_cause": "Belt tension had loosened gradually due to normal wear without a scheduled tension-check interval, causing the motor to work harder and overheat over weeks",
+    "tags": ["motor", "conveyor", "temperature", "belt-tension", "insulation"]
+  },
+  {
+    "id": "MAINT-2025-008",
+    "machine_id": "MCH-055",
+    "machine_type": "Hydraulic Press - Forming Station",
+    "date": "2025-06-14",
+    "technician": "R. Bhatt",
+    "precursor_signals": [
+      "hydraulic system pressure fluctuating outside normal band during cycle",
+      "cycle time increasing gradually over 2 weeks",
+      "small hydraulic fluid stains observed near cylinder seals"
+    ],
+    "failure": "Cylinder seal failure caused sudden pressure loss mid-press, halting production and requiring fluid cleanup",
+    "downtime_hours": 11,
+    "severity": "high",
+    "repairs_attempted": [],
+    "final_fix": "Replaced cylinder seals, flushed and replaced hydraulic fluid, inspected cylinder bore for scoring",
+    "root_cause": "Hydraulic fluid had not been tested for contamination on schedule, and particulate contamination accelerated seal wear",
+    "tags": ["hydraulic", "seal", "pressure", "fluid-contamination"]
+  },
+  {
+    "id": "MAINT-2025-009",
+    "machine_id": "MCH-063",
+    "machine_type": "Industrial Chiller - Cooling Plant",
+    "date": "2025-07-08",
+    "technician": "S. Naik",
+    "precursor_signals": [
+      "refrigerant pressure trending downward slowly over 10 days",
+      "compressor run time increasing to maintain setpoint temperature",
+      "condenser fan cycling more frequently than baseline"
+    ],
+    "failure": "Low refrigerant charge triggered compressor low-pressure safety cutoff, chiller stopped cooling",
+    "downtime_hours": 5,
+    "severity": "medium",
+    "repairs_attempted": [
+      "Topped off refrigerant without locating the leak - pressure dropped again within 3 weeks"
+    ],
+    "final_fix": "Located and repaired a slow leak at a brazed joint using UV dye trace, recharged system properly, retested for leaks",
+    "root_cause": "A brazed joint had a micro-leak from initial installation that was never caught because prior refrigerant top-offs treated the symptom, not the leak itself",
+    "tags": ["chiller", "refrigerant", "leak", "pressure", "cooling"]
+  },
+  {
+    "id": "MAINT-2025-010",
+    "machine_id": "MCH-071",
+    "machine_type": "Industrial Robot Arm - Welding Cell 4",
+    "date": "2025-08-01",
+    "technician": "A. Kulkarni",
+    "precursor_signals": [
+      "joint 3 servo motor current draw showing irregular spikes during specific motion paths",
+      "positional accuracy drifting by small but increasing margins on repeated cycles",
+      "audible clicking sound from joint 3 gearbox during deceleration"
+    ],
+    "failure": "Joint 3 gearbox backlash became severe enough to cause weld placement errors, failing quality inspection on multiple parts",
+    "downtime_hours": 16,
+    "severity": "high",
+    "repairs_attempted": [
+      "Recalibrated positional offsets in software - masked the drift temporarily but clicking sound and current spikes continued"
+    ],
+    "final_fix": "Replaced joint 3 gearbox assembly, verified backlash within spec, re-ran calibration",
+    "root_cause": "Gearbox lubricant had degraded past service life without a condition-based replacement trigger, only a fixed calendar interval that hadn't yet elapsed",
+    "tags": ["robot-arm", "gearbox", "servo", "backlash", "welding"]
+  },
+  {
+    "id": "MAINT-2025-011",
+    "machine_id": "MCH-028",
+    "machine_type": "Conveyor Belt Motor - Packaging Line",
+    "date": "2025-12-03",
+    "technician": "M. Chandran",
+    "precursor_signals": [
+      "motor casing temperature climbing gradually, same pattern as MAINT-2025-007",
+      "belt tracking drift detected early via new sensor alert",
+      "no stall alarms yet"
+    ],
+    "failure": "Caught before motor damage - belt tension found loose again during proactive inspection triggered by pattern match",
+    "downtime_hours": 2,
+    "severity": "low",
+    "repairs_attempted": [],
+    "final_fix": "Retensioned belt during scheduled maintenance window, added belt tension to the standard weekly inspection checklist",
+    "root_cause": "Belt tension check still wasn't part of any recurring schedule after the first incident five months earlier, only added now after this second occurrence",
+    "tags": ["motor", "conveyor", "temperature", "belt-tension", "repeat-failure", "caught-early"]
+  }
+]
