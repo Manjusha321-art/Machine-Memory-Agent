@@ -1,4 +1,4 @@
-# Giving Factory Machines Persistent Memory With Hindsight
+# How Hindsight Stopped Our Maintenance Agent From Repeating Dead-End Fixes
 
 At 2:00 AM on a packaging line, a centrifugal pump (`MCH-017`) starts whining and its bearing housing climbs past 70°C. The night-shift technician checks the symptoms, pumps fresh grease into the bearing housing, and closes the ticket—unaware that six months ago on the day shift, another technician tried that exact same fix, watched the vibration keep climbing to 9.8 mm/s, and lost 14 hours of production when the drive-end bearing seized.
 
