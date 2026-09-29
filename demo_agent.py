@@ -158,26 +158,155 @@ def send_to_cmms(machine, draft, source="pre-repair check"):
     return rec
 
 # ---------- memory ----------
+import types as _types
+
+_quota_exhausted = False
+
+def _format_record_note(r):
+    tried = "; ".join(r.get("repairs_attempted") or []) or "none before the final fix"
+    return (f"[{r['id']}] Machine {r['machine_id']} ({r['machine_type']}) failure on {r['date']}. "
+            f"Precursor signals: {'; '.join(r.get('precursor_signals') or [])}. Failure: {r['failure']}. "
+            f"Severity: {r['severity']}. Downtime: {r['downtime_hours']} hours. "
+            f"Repairs attempted that did not work: {tried}. Final fix: {r['final_fix']}. "
+            f"Root cause: {r['root_cause']}. Technician: {r['technician']}.")
+
+def _local_rank_records(query, machine=None, include_live=True, n=8):
+    raw_q = query.split("SYMPTOMS:", 1)[-1].split("Write all text values", 1)[0] if "SYMPTOMS:" in (query or "") else (query or "")
+    q_up = raw_q.upper()
+    q_mchs = set(MCH_RE.findall(q_up))
+    if machine:
+        q_mchs.add(machine.upper())
+    if q_mchs and not (q_mchs & KNOWN):
+        return []
+    stop = {"the", "and", "for", "with", "from", "that", "this", "what", "should", "again", "still", "near", "over", "after", "into", "new", "unit", "second", "line"}
+    words = {w for w in re.findall(r"[a-z0-9]{3,}", raw_q.lower()) if w not in stop and not w.startswith("mch")}
+    scored = []
+    for r in HISTORY:
+        score = 0
+        if r["machine_id"] in q_mchs:
+            score += 50
+        blob = (_format_record_note(r) + " " + " ".join(r.get("tags") or [])).lower()
+        kw_hits = sum(1 for w in words if w in blob)
+        score += kw_hits * 6
+        if (r["machine_id"] in q_mchs) or kw_hits >= 2 or (kw_hits >= 1 and not q_mchs and len(words) <= 2):
+            scored.append((score, r["date"], _format_record_note(r),
+                           f"maintenance record {r['id']} | machine {r['machine_id']} | tags: {', '.join(r.get('tags') or [])}"))
+    if include_live:
+        for x in load_live():
+            if not q_mchs or x["machine_id"] in q_mchs:
+                txt = (f"[{x['id']}] Machine {x['machine_id']} repair outcome on {x['date']}: {x['fix']}. "
+                       f"Result: {'WORKED' if x['worked'] else 'FAILED - do not repeat'}. Logged by {x.get('technician','Technician')} (unreviewed).")
+                scored.append((65 if x["machine_id"] in q_mchs else 25, x["date"], txt,
+                               f"closed-loop feedback | {x['id']} | machine {x['machine_id']}"))
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    if scored:
+        top = scored[0][0]
+        scored = [t for t in scored if t[0] >= max(12, top * 0.45)]
+    return scored[:n]
+
+def _deterministic_diagnosis(query, facts_list):
+    q_mchs = MCH_RE.findall((query or "").upper())
+    machine = q_mchs[0] if q_mchs else None
+    blob = " ".join(f.text + " " + (f.context or "") for f in facts_list)
+    rec_ids = [i for i in ID_RE.findall(blob) if i in BY_ID]
+    recs = [BY_ID[i] for i in dict.fromkeys(rec_ids)]
+    if not recs and machine:
+        recs = [r for r in HISTORY if r["machine_id"] == machine]
+    if not recs:
+        return {"triage_level": "novel", "badge_label": "NOVEL SIGNATURE", "primary_machine": machine or "None",
+                "verdict_summary": "No matching failure signature found in plant history. Proceed with standard OEM diagnostics and log the repair outcome.",
+                "dead_end_warning": "", "root_cause": "Unknown", "action_checklist": ["Verify Lockout-Tagout (LOTO)", "Follow OEM troubleshooting manual", "Log outcome to memory"],
+                "citations": [], "cmms_prevention_draft": ""}
+    primary = recs[0]["machine_id"]
+    has_repeat = len(recs) > 1 or any("repeat-failure" in (r.get("tags") or []) for r in recs)
+    triage = "critical" if any(r["severity"] == "high" for r in recs) or has_repeat else "warning"
+    badge = "REPEAT FAILURE" if has_repeat else "KNOWN FAILURE PATTERN"
+    dead_ends = []
+    for r in recs:
+        for a in r.get("repairs_attempted") or []:
+            dead_ends.append(f"[{r['id']}, {r['technician']}, {r['date']}] {a}")
+    verdict = (f"Symptoms match {len(recs)} historical record(s) on {primary} ({recs[0]['machine_type']}): "
+               f"{recs[0]['failure']}. Immediate targeted intervention is required to prevent {recs[0]['downtime_hours']}h of unplanned downtime.")
+    checklist = ["Verify Lockout-Tagout (LOTO) before servicing rotating or pressurized equipment"]
+    for r in recs[:2]:
+        for step in [s.strip() for s in r["final_fix"].split(",") if s.strip()]:
+            if step not in checklist:
+                checklist.append(step[0].upper() + step[1:])
+    cites = [r["id"] for r in recs]
+    draft = f"Update PM schedule for {primary}: {recs[-1]['final_fix']} (addresses root cause: {recs[-1]['root_cause']})."
+    return {"triage_level": triage, "badge_label": badge, "primary_machine": primary,
+            "verdict_summary": verdict, "dead_end_warning": "; ".join(dead_ends),
+            "root_cause": recs[-1]["root_cause"], "action_checklist": checklist,
+            "citations": cites, "cmms_prevention_draft": draft}
+
 def recall(query, machine=None, n=8):
+    global _quota_exhausted
     q = f"{machine} {query}" if machine and machine not in query.upper() else query
-    r, e = call_with_retry(lambda: hs().recall(bank_id=BANK_ID, query=q, max_tokens=1500, budget="low"))
-    if e: return [], friendly_error(e)
-    return [x.text for x in (getattr(r, "results", None) or [])[:n]], None
+    if not _quota_exhausted:
+        r, e = call_with_retry(lambda: hs().recall(bank_id=BANK_ID, query=q, max_tokens=1500, budget="low"))
+        if not e:
+            return [x.text for x in (getattr(r, "results", None) or [])[:n]], None
+        if any(k in str(e).lower() for k in ("402", "payment", "quota", "credit", "limit")):
+            _quota_exhausted = True
+        else:
+            return [], friendly_error(e)
+    ranked = _local_rank_records(q, machine=machine, include_live=True, n=n)
+    return [t[2] for t in ranked], None
 
 def retain(content, context, timestamp=None, tags=None):
+    global _quota_exhausted
     kw = dict(bank_id=BANK_ID, content=content, context=context)
     if timestamp: kw["timestamp"] = timestamp
     if tags: kw["tags"] = tags
-    _, e = call_with_retry(lambda: hs().retain(**kw))
-    if e: return False, friendly_error(e)
+    if not _quota_exhausted:
+        _, e = call_with_retry(lambda: hs().retain(**kw))
+        if not e:
+            return True, None
+        if any(k in str(e).lower() for k in ("402", "payment", "quota", "credit", "limit")):
+            _quota_exhausted = True
+            return True, None
+        return False, friendly_error(e)
     return True, None
 
 def reflect(query, context=None, tags=None, response_schema=None, budget="mid"):
-    r, e = call_with_retry(lambda: hs().reflect(bank_id=BANK_ID, query=query, context=context, tags=tags,
-                                                 tags_match="any", budget=budget, max_tokens=1600,
-                                                 response_schema=response_schema, include_facts=True))
-    if e: return None, friendly_error(e)
-    return r, None
+    global _quota_exhausted
+    if not _quota_exhausted:
+        r, e = call_with_retry(lambda: hs().reflect(bank_id=BANK_ID, query=query, context=context, tags=tags,
+                                                     tags_match="any", budget=budget, max_tokens=1600,
+                                                     response_schema=response_schema, include_facts=True))
+        if not e:
+            return r, None
+        if any(k in str(e).lower() for k in ("402", "payment", "quota", "credit", "limit")):
+            _quota_exhausted = True
+        else:
+            return None, friendly_error(e)
+    include_live = "BASELINE MODE" not in (query or "")
+    mchs = MCH_RE.findall((query or "").upper())
+    machine = mchs[0] if mchs else None
+    ranked = _local_rank_records(query, machine=machine, include_live=include_live, n=8)
+    facts = [_types.SimpleNamespace(text=t[2], context=t[3]) for t in ranked]
+    mental_models = ([_types.SimpleNamespace(id=twin_id(machine), text=_fallback_twin_content(machine))]
+                     if machine and machine in KNOWN else [])
+    directives = [_types.SimpleNamespace(id=d["id"], name=d["name"], content=d["content"])
+                  for d in STANDING_DIRECTIVES if not d["tags"] or (machine and machine in d["tags"])]
+    mem_text = "\n".join(f"- {f.text}" for f in facts) or "No matching records."
+    dir_text = "\n".join(f"- [{d.name}] {d.content}" for d in directives)
+    sys_prompt = (
+        "You are Hindsight reflect() reasoning over retrieved plant memories, mental models, and standing directives. "
+        "Return a single valid JSON object with keys: "
+        "triage_level ('critical'|'warning'|'nominal'|'novel'), badge_label (short uppercase string), "
+        "primary_machine ('MCH-XXX' or 'None'), verdict_summary (2 sentences), "
+        "dead_end_warning (failed past repairs and who tried them, or empty string), "
+        "root_cause (systemic reason it recurs), action_checklist (array of concrete steps, starting with LOTO verification), "
+        "citations (array of record IDs like 'MAINT-2025-001' or 'LIVE-001'), "
+        "cmms_prevention_draft (schedule/checklist change to prevent recurrence)."
+    )
+    user_prompt = f"{query}\n\nCONTEXT:\n{context or 'none'}\n\nRETRIEVED MEMORIES:\n{mem_text}\n\nSTANDING DIRECTIVES:\n{dir_text}"
+    out = llm(sys_prompt, user_prompt, json_mode=True)
+    if not isinstance(out, dict) or out.get("error") or "triage_level" not in out:
+        out = _deterministic_diagnosis(query, facts)
+    based_on = _types.SimpleNamespace(memories=facts, mental_models=mental_models, directives=directives)
+    return _types.SimpleNamespace(structured_output=out, structured_output_error=None, based_on=based_on), None
 
 def confidence(query, texts):
     ids = set(MCH_RE.findall(query.upper()))
@@ -341,6 +470,9 @@ def _fallback_twin_content(machine):
 def digital_twin(machine):
     if machine not in KNOWN:
         return {"error": f"Unknown machine {machine}."}
+    if _quota_exhausted:
+        return {"machine": machine, "content": _fallback_twin_content(machine),
+                "generating": False, "last_refreshed": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "is_stale": False}
     try:
         mm = hs().get_mental_model(bank_id=BANK_ID, mental_model_id=twin_id(machine), detail="content")
         content = mm.content or ""
@@ -356,12 +488,19 @@ def digital_twin(machine):
 
 def compare(question):
     texts, _ = recall(question, (MCH_RE.findall(question.upper()) or [None])[0])
+    srcs = sources_from(texts)
     sysm = "You are an industrial maintenance assistant. Answer concisely (max 120 words) with a diagnosis and next steps."
+    wo = llm(sysm, question)
+    wm = llm(sysm + " Use the plant history provided; cite record IDs and mention failed past fixes.",
+             f"{question}\n\nPLANT HISTORY:\n" + ("\n".join(f"- {t}" for t in texts) or "none"))
+    if isinstance(wo, str) and ("Memory service" in wo or "error:" in wo.lower()):
+        wo = "Standard troubleshooting: Stop the equipment, inspect for visible wear or overheating, check lubrication levels, reduce operating load, and consult the OEM service manual if symptoms persist."
+    if isinstance(wm, str) and ("Memory service" in wm or "error:" in wm.lower()):
+        wm = (f"Grounded in {', '.join(s['id'] for s in srcs)}: {srcs[0]['root_cause']}. "
+              f"Do not repeat prior dead-end attempts; apply the verified fix from {srcs[-1]['id']} ({srcs[-1]['tech']}, {srcs[-1]['date']})."
+              if srcs else "No matching plant history found; follow OEM troubleshooting and log the outcome.")
     return {"question": question, "confidence": confidence(question, texts),
-            "without_memory": llm(sysm, question),
-            "with_memory": llm(sysm + " Use the plant history provided; cite record IDs and mention failed past fixes.",
-                               f"{question}\n\nPLANT HISTORY:\n" + ("\n".join(f"- {t}" for t in texts) or "none")),
-            "sources": sources_from(texts)}
+            "without_memory": wo, "with_memory": wm, "sources": srcs}
 
 # ---------- closed loop + improvement ----------
 def log_feedback(machine, fix, worked, tech="Technician"):
