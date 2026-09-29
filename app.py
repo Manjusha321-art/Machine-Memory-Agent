@@ -44,8 +44,13 @@ def feedback():
 @app.route("/api/improvement", methods=["POST"])
 def improvement():
     d = body()
-    return jsonify(A.improvement(d.get("machine_id", "MCH-017"), d.get("question", "MCH-017 vibration climbing, bearing housing warm"),
-                                 d.get("fix", "Re-greased bearing housing"), bool(d.get("worked", False))))
+    return jsonify(A.improvement(
+        d.get("machine_id") or "MCH-055",
+        d.get("question") or "MCH-055 hydraulic press pressure fluctuating, fluid stains near cylinder seals",
+        d.get("fix") or "Topped up hydraulic reservoir and bled air line without replacing cylinder seals",
+        bool(d.get("worked", False)),
+        d.get("lang") or "English",
+    ))
 
 @app.route("/api/reset_live", methods=["POST"])
 

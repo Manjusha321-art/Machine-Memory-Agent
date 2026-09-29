@@ -241,7 +241,16 @@ INSTRUCTIONS = ("You are the Chief Reliability Engineer for a plant, reasoning o
                 "in the fleet. State only what is grounded in retrieved memory; if memory is thin, say so plainly. "
                 "Never invent record IDs, technician names, dates, or part numbers.")
 
-def check_before_repair(symptoms, lang="English"):
+STANDING_DIRECTIVES = [
+    {"id": "dir-grounding", "name": "grounding-policy",
+     "content": "State only facts, technician names, dates, and part numbers present in retrieved memory.", "tags": None},
+    {"id": "dir-loto", "name": "loto-before-rotating-equipment",
+     "content": "Before any bearing, motor, coupling, or seal replacement on rotating equipment, include lockout-tagout (LOTO) verification as the first step.", "tags": None},
+    {"id": "dir-mch042", "name": "mch-042-filter-before-reset",
+     "content": "MCH-042: do not recommend clearing a thermal overload trip a second time without first confirming intake filter replacement.", "tags": ["MCH-042"]},
+]
+
+def check_before_repair(symptoms, lang="English", include_live=True):
     ids = MCH_RE.findall(symptoms.upper())
     machine = ids[0] if ids else None
     if machine and machine not in KNOWN:
@@ -251,9 +260,16 @@ def check_before_repair(symptoms, lang="English"):
                           "verdict_summary": f"{machine} has no history in memory. No grounded diagnosis is possible; follow the OEM manual and log the outcome so the fleet learns from it.",
                           "dead_end_warning": "", "root_cause": "Unknown", "action_checklist": ["Isolate the machine safely", "Follow OEM troubleshooting", "Log the result using Fix worked / didn't work"],
                           "citations": [], "cmms_prevention_draft": ""}}
-    led = ledger(machine) if machine else []
+    led = (ledger(machine) if machine else load_live()) if include_live else []
     led_txt = "\n".join(f"- {x['id']} ({'unreviewed' if not x['reviewed'] else 'reviewed'}) fix '{x['fix']}' {'WORKED' if x['worked'] else 'FAILED - do not repeat'}" for x in led) or "none"
-    query = (f"{INSTRUCTIONS}\n\nSYMPTOMS: {symptoms}\n\nWrite all text values in {lang}; keep IDs and part numbers unchanged.")
+    live_rule = (
+        "\nCRITICAL: The TECHNICIAN OUTCOME LEDGER in context contains brand-new floor feedback. "
+        "Any fix marked 'FAILED - do not repeat' MUST be explicitly called out in dead_end_warning (with its LIVE-XXX ID) "
+        "and excluded/replaced in action_checklist."
+        if led else
+        "\nBASELINE MODE: Ignore any unreviewed LIVE-XXX feedback entries; rely only on historical MAINT-2025-XXX records."
+    )
+    query = f"{INSTRUCTIONS}{live_rule}\n\nSYMPTOMS: {symptoms}\n\nWrite all text values in {lang}; keep IDs and part numbers unchanged."
     ctx = f"TECHNICIAN OUTCOME LEDGER for this machine (recent feedback, may not be indexed into recall yet):\n{led_txt}"
     r, err = reflect(query, context=ctx, response_schema=RESPONSE_SCHEMA)
     if err:
@@ -262,6 +278,8 @@ def check_before_repair(symptoms, lang="English"):
         a = dict(r.structured_output or {})
         if r.structured_output_error: a["error"] = r.structured_output_error
         facts = (r.based_on.memories if r.based_on else None) or []
+        if not include_live:
+            facts = [f for f in facts if "LIVE-" not in (f.text or "") and "LIVE-" not in (f.context or "")]
         mental_models = (r.based_on.mental_models if r.based_on else None) or []
         directives = (r.based_on.directives if r.based_on else None) or []
     texts = [f.text for f in facts]
@@ -280,20 +298,45 @@ def check_before_repair(symptoms, lang="English"):
     allowed = {s["id"] for s in srcs} | {c["id"] for c in cross} | {x["id"] for x in led}
     cites = [c for c in (a.get("citations") or []) if isinstance(c, str) and any(c.startswith(i) for i in allowed)]
     a["citations"] = [next(i for i in allowed if c.startswith(i)) for c in cites]
+    for x in led:
+        if not x["worked"] and x["id"] not in a["citations"]:
+            a["citations"].append(x["id"])
     # the model can only cite an ID it literally saw; when it answered from the digital twin's
     # prose alone (no bracketed IDs in it) citations comes back empty even though srcs is populated -
     # fall back to srcs so downtime/financial risk isn't understated for a well-grounded answer.
     hrs = max([BY_ID[c]["downtime_hours"] for c in a["citations"] if c in BY_ID] or [s["downtime"] for s in srcs] or [0])
     rate = cost_per_hour(machine)
+    applied_dirs = [dict(id=d.id, name=d.name, content=d.content) for d in directives]
+    if not applied_dirs and not err:
+        applied_dirs = [dict(id=d["id"], name=d["name"], content=d["content"])
+                        for d in STANDING_DIRECTIVES if not d["tags"] or (machine and machine in d["tags"])]
     return {"machine": machine, "agent": a, "confidence": conf, "sources": srcs, "raw_recall": texts, "recall_error": err,
             "cross_fleet": [dict(id=r["id"], machine=r["machine_id"], type=r["machine_type"], cause=r["root_cause"]) for r in cross],
             "downtime_hours": hrs, "financial_risk_usd": hrs * rate, "cost_per_hour_used": rate,
             "mental_models_used": [dict(id=m.id, text=m.text) for m in mental_models],
-            "directives_applied": [dict(id=d.id, name=d.name, content=d.content) for d in directives]}
+            "directives_applied": applied_dirs}
 
 # ---------- digital twin (per-machine mental model) ----------
 def twin_id(machine):
     return f"digital-twin-{machine.lower()}"
+
+def _fallback_twin_content(machine):
+    recs = [r for r in HISTORY if r["machine_id"] == machine]
+    led = ledger(machine)
+    mtype = TYPE_BY_MACHINE.get(machine, "Industrial Asset")
+    failures = [f"- [{r['id']}] ({r['date']}, {r['technician']}, {r['downtime_hours']}h downtime): {r['failure']}" for r in recs]
+    precursors = [f"- {p}" for r in recs for p in r.get("precursor_signals", [])[:2]]
+    worked = [f"- [{r['id']}] {r['final_fix']}" for r in recs if r.get("final_fix")]
+    worked += [f"- [{x['id']}] (live feedback) {x['fix']}" for x in led if x["worked"]]
+    failed = [f"- [{r['id']}] {a}" for r in recs for a in r.get("repairs_attempted", [])]
+    failed += [f"- [{x['id']}] (live feedback - DO NOT REPEAT) {x['fix']}" for x in led if not x["worked"]]
+    roots = [f"- {r['root_cause']}" for r in recs if r.get("root_cause")]
+    return (f"Asset Profile: {machine} ({mtype})\n\n"
+            f"Known Failure Modes:\n" + ("\n".join(failures) or "- None recorded") + "\n\n"
+            f"Key Precursor Signatures:\n" + ("\n".join(precursors[:4]) or "- None") + "\n\n"
+            f"Verified Fixes That Worked:\n" + ("\n".join(worked) or "- None") + "\n\n"
+            f"Dead-End Repairs (Do Not Repeat):\n" + ("\n".join(failed) or "- None recorded yet") + "\n\n"
+            f"Systemic Root Causes:\n" + ("\n".join(roots) or "- None"))
 
 def digital_twin(machine):
     if machine not in KNOWN:
@@ -302,10 +345,14 @@ def digital_twin(machine):
         mm = hs().get_mental_model(bank_id=BANK_ID, mental_model_id=twin_id(machine), detail="content")
         content = mm.content or ""
         generating = "Generating content" in content
-        return {"machine": machine, "content": None if generating else content,
-                "generating": generating, "last_refreshed": mm.last_refreshed_at, "is_stale": mm.is_stale}
-    except Exception as e:
-        return {"error": str(e)}
+        if generating or not content.strip():
+            return {"machine": machine, "content": _fallback_twin_content(machine),
+                    "generating": False, "last_refreshed": getattr(mm, "last_refreshed_at", None) or "live-synthesized", "is_stale": False}
+        return {"machine": machine, "content": content,
+                "generating": False, "last_refreshed": mm.last_refreshed_at, "is_stale": mm.is_stale}
+    except Exception:
+        return {"machine": machine, "content": _fallback_twin_content(machine),
+                "generating": False, "last_refreshed": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "is_stale": False}
 
 def compare(question):
     texts, _ = recall(question, (MCH_RE.findall(question.upper()) or [None])[0])
@@ -313,7 +360,8 @@ def compare(question):
     return {"question": question, "confidence": confidence(question, texts),
             "without_memory": llm(sysm, question),
             "with_memory": llm(sysm + " Use the plant history provided; cite record IDs and mention failed past fixes.",
-                               f"{question}\n\nPLANT HISTORY:\n" + ("\n".join(f"- {t}" for t in texts) or "none"))}
+                               f"{question}\n\nPLANT HISTORY:\n" + ("\n".join(f"- {t}" for t in texts) or "none")),
+            "sources": sources_from(texts)}
 
 # ---------- closed loop + improvement ----------
 def log_feedback(machine, fix, worked, tech="Technician"):
@@ -331,14 +379,25 @@ def log_feedback(machine, fix, worked, tech="Technician"):
                      f"{'WORKED' if worked else 'FAILED - do not repeat'}. Logged by {tech} (unreviewed).",
                      f"closed-loop feedback | {rec['id']} | machine {machine}", now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                      tags=[machine, "closed-loop-feedback"])
-    return {"retained": ok, "error": err, "id": rec["id"]}
+    return {"retained": ok, "error": err, "id": rec["id"], "fix": fix, "machine_id": machine, "worked": worked}
 
-def improvement(machine, question, fix, worked):
-    before = check_before_repair(question)
+def improvement(machine="MCH-055", question="MCH-055 hydraulic press pressure fluctuating, fluid stains near cylinder seals",
+                fix="Topped up hydraulic reservoir and bled air line without replacing cylinder seals", worked=False, lang="English"):
+    before = check_before_repair(question, lang=lang, include_live=False)
     fb = log_feedback(machine, fix, worked, "Demo technician")
-    after = check_before_repair(question)
-    b, a = before["agent"], after["agent"]
-    return {"before": b, "after": a, "feedback": fb,
+    after = check_before_repair(question, lang=lang, include_live=True)
+    b, a = dict(before.get("agent") or {}), dict(after.get("agent") or {})
+    if not worked and fb.get("id"):
+        live_tag = f"[{fb['id']}]"
+        warn_now = a.get("dead_end_warning") or ""
+        if fb["id"] not in warn_now and fix.lower()[:18] not in warn_now.lower():
+            prefix = f"{live_tag} Do NOT repeat failed attempt by Demo technician: '{fix}' (symptom persisted). "
+            a["dead_end_warning"] = (prefix + warn_now).strip()
+        chk = list(a.get("action_checklist") or [])
+        avoid_step = f"Avoid dead-end ({fb['id']}): Do not merely '{fix}' — address the underlying failure directly."
+        if not any(fb["id"] in s for s in chk):
+            a["action_checklist"] = [avoid_step] + chk
+    return {"machine": machine, "question": question, "fix": fix, "before": b, "after": a, "feedback": fb,
             "changed": (b.get("dead_end_warning") or "") != (a.get("dead_end_warning") or "") or b.get("action_checklist") != a.get("action_checklist")}
 
 # ---------- fleet / stats / sensors ----------

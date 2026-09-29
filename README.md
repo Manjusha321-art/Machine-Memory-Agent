@@ -37,7 +37,7 @@ Technician input (symptoms / current sensor readings)
       └───────┬───────┘
               ▼
         Hindsight Memory
-      (bank: "factory-floor")
+      (bank: "factory-floor-v2")
               │
               ▼
          Groq LLM
@@ -61,12 +61,12 @@ Each record includes: machine ID, precursor signals observed before
 failure, the failure itself, repairs attempted, the fix that actually
 worked, and the root cause.
 
-**Recall** — Used in the side-by-side demo mode
-(`compare_with_without_memory`). A technician's question is used as a
-recall query against the bank; the retrieved memories are then passed to
-the LLM as grounding context before it answers. This is intentionally
-lightweight — recall's job here is just retrieval, and the LLM does the
-reasoning on top of it.
+**Recall** — Used in the side-by-side demo mode (`compare`) and the
+automated 10-case benchmark evaluation (`run_eval`). A technician's
+question is used as a recall query against the bank; the retrieved
+memories are then passed to the LLM as grounding context before it
+answers. This is intentionally lightweight — recall's job here is fast
+retrieval, and the LLM does the reasoning on top of it.
 
 **Reflect** — Used in the pre-repair check mode (`check_before_repair`).
 Reflect is suited to judgment questions rather than plain lookup — "does
@@ -117,8 +117,7 @@ answer into a specific, accountable one.
 ## Setup
 
 ```bash
-pip install hindsight-client -U
-pip install groq
+pip install -r requirements.txt
 
 export HINDSIGHT_API_KEY="your-hindsight-cloud-api-key"
 export HINDSIGHT_BASE_URL="https://api.hindsight.vectorize.io"
@@ -126,34 +125,23 @@ export GROQ_API_KEY="your-groq-api-key"
 
 python seed_memory.py --reset      # loads the 11 synthetic maintenance records
 python setup_advanced_memory.py    # creates per-machine digital twins + standing directives
-python demo_agent.py                # run the interactive demo
+python app.py                      # launch the interactive web application
 ```
 
 See `SETUP.md` for detailed, step-by-step instructions.
 
-## Demo
+## Interactive Web Application (`app.py`)
 
-Two ways to run the demo:
-
-**Web UI (recommended for live demos):**
 ```bash
-pip install flask
 python app.py
 ```
-Open `http://localhost:5000`. Three tabs:
-1. **Without vs. With Memory** — the same question run twice, side by
-   side, showing exactly what memory adds.
-2. **Pre-Repair Check** — describe current symptoms, the agent recalls +
-   reflects on matching past failures and their fixes.
-3. **Live Learning** — retain a brand-new incident on the spot, then
-   immediately recall it. This demonstrates the agent's memory actually
-   growing during use, not just returning data seeded ahead of time.
-
-**Terminal (original CLI):**
-```bash
-python demo_agent.py
-```
-Same three modes, interactive prompts instead of a browser.
+Open `http://localhost:5000`. Features:
+- **Live Fleet & Sensor Watch** — Real-time sparkline telemetry across monitored machines with proactive precursor anomaly detection and 1-click alert diagnosis.
+- **Multilingual Voice & Text Support** — Diagnose and generate handoffs in **English**, **Hindi**, or **Telugu**, with browser speech recognition for hands-free floor use.
+- **Tab 1: Diagnose & Digital Twin** — 20 realistic scenarios (including cross-fleet and novel/unknown machine edge cases), Hindsight `reflect()` triage, dead-end warnings, financial downtime risk (`$/hr` by asset class), standing Directives enforcement, citation provenance, self-updating Hindsight Mental Model Digital Twin, 1-click CMMS work-order drafting, and closed-loop technician outcome logging.
+- **Tab 2: Closed-Loop Improvement** — Automated 3-step live learning proof: diagnoses a machine, retains a failed repair (`LIVE-XXX`) into Hindsight, and re-runs the diagnosis to show the new dead-end warning and updated checklist side-by-side.
+- **Tab 3: With vs. Without Memory** — Side-by-side comparison between a generic LLM (0 plant records) and the Hindsight-grounded agent.
+- **Tab 4: Shift Handoff, CMMS Outbox & 10-Case Evaluation** — Generates shift handoff briefs, displays queued CMMS preventive work orders (`WO-YYYY-XXXX`), and runs a 10-case retrieval & grounding benchmark.
 
 Try:
 ```
