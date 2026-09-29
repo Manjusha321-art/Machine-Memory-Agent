@@ -6,13 +6,15 @@ Industrial plants do not suffer from a lack of data; they suffer from amnesia be
 
 To solve this, I built the **Machine Memory Agent** ([GitHub repository](https://github.com/Manjusha321-art/Machine-Memory-Agent)): a reliability system that gives every industrial asset on a factory floor its own persistent, self-updating memory using the [Hindsight open-source repository on GitHub](https://github.com/vectorize-io/hindsight) and Groq (`openai/gpt-oss-120b`). Instead of treating maintenance logs as static documents for keyword search, the system retains technician field notes, synthesizes living per-machine digital twins, enforces plant safety policies as standing memory directives, and learns from failed floor repairs in real time.
 
+![Machine Memory Agent Overview & Fleet Telemetry](https://raw.githubusercontent.com/Manjusha321-art/Machine-Memory-Agent/main/screenshots/1_dashboard_overview.png)
+
 ---
 
 ## How the System Hangs Together
 
 When a floor technician describes a symptom (by typing or using hands-free voice input) or when a live telemetry stream crosses a precursor slope threshold, the request flows through a Flask gateway (`app.py`) into the core reasoning engine (`demo_agent.py`).
 
-```
+```text
 Technician Input (Voice / Text) or Live Sensor Telemetry Anomaly
                               │
                               ▼
@@ -37,6 +39,8 @@ Rather than bolting a basic vector store onto a chat prompt, the architecture le
 3. **`reflect()`** — Executes multi-memory judgment queries with a strict JSON `response_schema` and `include_facts=True`, returning both the structured diagnosis and a `based_on` provenance object listing the exact memories, mental models, and directives used.
 4. **Mental Models (`create_mental_model`)** — Maintains a self-updating Digital Twin (`digital-twin-mch-017`, etc.) for every machine on the floor, configured with `trigger={"refresh_after_consolidation": True}` so the profile updates automatically as new repairs are retained.
 5. **Directives (`create_directive`)** — Encodes plant-wide safety rules (such as mandatory Lockout-Tagout before touching rotating equipment) and asset-specific guardrails directly inside the memory bank rather than burying them in fragile application prompts.
+
+![Fleet Risk Grid and Incident Scenario Picker](https://raw.githubusercontent.com/Manjusha321-art/Machine-Memory-Agent/main/screenshots/2_scenarios_fleet.png)
 
 ---
 
@@ -153,6 +157,8 @@ a["citations"] = [next(i for i in allowed if c.startswith(i)) for c in cites]
 
 If someone queries an unknown machine like `MCH-999 hydraulic leakage on a newly installed robot`, the agent refuses to guess: it returns a `0% match` confidence score, flags the triage level as `novel`, and instructs the technician to follow the OEM manual and log the outcome so the fleet learns from it.
 
+![MCH-017 Diagnosis with Dead-End Warning, Standing Directives, Citations & Digital Twin](https://raw.githubusercontent.com/Manjusha321-art/Machine-Memory-Agent/main/screenshots/3_diagnosis_digital_twin.png)
+
 ---
 
 ## Concrete Behavior: Before vs. After Memory Grows
@@ -175,8 +181,14 @@ Take `MCH-055` (Hydraulic Press — Forming Station). In its initial history (`M
 3. **Step 3 (Post-Feedback Diagnosis):** The exact same symptom query is run again. This time, the diagnosis surfaces a prominent **Dead-End Warning** citing `LIVE-001` (*"Do NOT repeat failed attempt by Demo technician: 'Topped up hydraulic reservoir and bled air line without replacing cylinder seals'"*) and prepends an explicit avoidance step to the action checklist.
 
 The same contrast appears in the side-by-side **With vs. Without Memory** comparison for `MCH-009` (CNC Milling Machine):
-* **Without Memory (Generic LLM):** Suggests reducing feed rate or spindle speed to see if the chatter marks disappear.
-* **With Hindsight Memory (`86% match`):** Warns that technician A. Kulkarni already tried reducing spindle speed in `MAINT-2025-005`—which only masked the noise until the spindle seized mid-cut, causing 22 hours of downtime ($132,000 in lost production)—and directs the technician to inspect the drifted coolant delivery nozzle and replace the spindle bearing cartridge.
+* **Without Memory (Generic LLM):** Suggests generic inspection steps with zero awareness of prior plant tickets.
+* **With Hindsight Memory (`72% match`):** Warns that technician A. Kulkarni (`MAINT-2025-005`) and D. Iyer (`MAINT-2025-006`) already faced this exact failure pattern, highlights the drifted coolant nozzle root cause, and instructs the technician to add daily coolant-nozzle alignment verification to the preventive checklist.
+
+![Side-by-Side Comparison: Without Memory vs. With Hindsight Memory](https://raw.githubusercontent.com/Manjusha321-art/Machine-Memory-Agent/main/screenshots/4_with_vs_without_memory.png)
+
+In addition to per-incident triage, the system synthesizes fleet-wide risk, sensor precursor alerts, and recent live outcomes into an actionable **Shift Handoff** brief for incoming reliability teams:
+
+![Automated Shift Handoff Brief](https://raw.githubusercontent.com/Manjusha321-art/Machine-Memory-Agent/main/screenshots/5_shift_handoff.png)
 
 ---
 
